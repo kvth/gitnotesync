@@ -1,0 +1,38 @@
+# Watch one notes repository. This is a template unit: the instance name is the
+# vault's absolute path, systemd-escaped, so one copy of this file serves every
+# vault you have.
+#
+#   install -Dm644 gitnotesync@.service ~/.config/systemd/user/gitnotesync@.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now "gitnotesync@$(systemd-escape --path ~/notes)"
+#
+# Each vault is then its own service: restart, stop and read the logs of one
+# without touching the others.
+#
+#   systemctl --user status "gitnotesync@$(systemd-escape --path ~/notes)"
+#   journalctl --user -u "gitnotesync@$(systemd-escape --path ~/notes)" -f
+
+[Unit]
+Description=Sync notes in /%I
+Documentation=https://github.com/kvth/gitnotesync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# %I is the unescaped instance name, which has no leading slash of its own.
+ExecStart=%h/.local/bin/gitnotesync watch /%I
+Restart=always
+RestartSec=30
+
+# git is taken from PATH. Point this at another one to use a different git.
+# Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+# Pushing over SSH needs the agent socket, and a user unit does not always
+# inherit it. If pushes fail with "Permission denied (publickey)", set it --
+# gnome-keyring uses %t/keyring/ssh, systemd's ssh-agent.service uses
+# %t/ssh-agent.socket -- or run `systemctl --user import-environment SSH_AUTH_SOCK`
+# from a logged-in shell.
+# Environment=SSH_AUTH_SOCK=%t/keyring/ssh
+
+[Install]
+WantedBy=default.target
