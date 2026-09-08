@@ -31,6 +31,7 @@ type globals struct {
 	commitMessage string
 	pull, push    bool
 	runHooks      bool
+	resolveStamps bool
 	dryRun        bool
 
 	// frontmatter
@@ -61,6 +62,7 @@ var g = globals{
 	push:              true,
 	stamp:             true,
 	createBlock:       true,
+	resolveStamps:     true,
 	modifiedFromMTime: true,
 	backfillCreated:   true,
 }
@@ -97,6 +99,7 @@ Running it with just a path is the same as ` + "`gitnotesync watch <path>`" + `.
 	noFlag(f, &g.pull, "no-pull", "do not fetch and rebase onto the upstream branch")
 	noFlag(f, &g.push, "no-push", "do not push local commits to the upstream branch")
 	f.BoolVar(&g.runHooks, "run-hooks", false, "let git hooks run on commit (a failing hook will block syncing)")
+	noFlag(f, &g.resolveStamps, "no-resolve-timestamps", "abort a rebase that conflicts only on frontmatter timestamps, rather than merging them")
 	f.BoolVarP(&g.dryRun, "dry-run", "n", false, "report what would happen without changing anything")
 
 	noFlag(f, &g.stamp, "no-frontmatter", "do not maintain created/modified frontmatter timestamps")
@@ -168,13 +171,14 @@ func open(cmd *cobra.Command, args []string) (*syncer.Syncer, *gitx.Runner, stri
 	}
 
 	s := syncer.New(syncer.Config{
-		RepoPath:       root,
-		CommitSubject:  g.commitSubject,
-		CommitTemplate: tmpl,
-		Pull:           g.pull,
-		Push:           g.push,
-		RunHooks:       g.runHooks,
-		DryRun:         g.dryRun,
+		RepoPath:          root,
+		CommitSubject:     g.commitSubject,
+		CommitTemplate:    tmpl,
+		Pull:              g.pull,
+		Push:              g.push,
+		RunHooks:          g.runHooks,
+		ResolveTimestamps: g.resolveStamps,
+		DryRun:            g.dryRun,
 		Stamp: syncer.StampConfig{
 			Enabled: g.stamp,
 			Include: g.include,

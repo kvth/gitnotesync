@@ -78,9 +78,14 @@ The residual risks, honestly:
   frontmatter on its next save. Obsidian, VS Code and vim all reload on external
   change; an editor that does not will lose the stamp until the next edit. No
   external writer can prevent this.
-- **`modified:` conflicts on rebase.** Two machines editing one note make that
-  line conflict. It is an ordinary git conflict on top of a real one — the
-  rebase is aborted and your worktree is left untouched.
+- **`modified:` conflicts on rebase are merged.** Two machines editing one
+  note make that line conflict even when the notes themselves merge fine.
+  Nobody wrote those timestamps, so when the frontmatter timestamps are the
+  *only* thing in conflict they are reconciled — the later `modified:`, the
+  earlier `created:` — and the rebase carries on. Anything else in the
+  conflict, including a note whose body genuinely disagrees, aborts the rebase
+  and leaves your worktree untouched. `--no-resolve-timestamps` turns the
+  merging off and goes back to aborting on both.
 - **Frontmatter blocks are added to every note you edit.** On a vault that has
   never had frontmatter, that is a large first diff. Run
   `sync --dry-run -v` first, or pass `--no-create-frontmatter` to maintain
@@ -123,6 +128,7 @@ Selected flags:
 | `--no-create-frontmatter` | | Leave notes that have no block alone |
 | `--commit-subject` | `notes: auto-sync` | First line of generated commits |
 | `--commit-message` | built-in | Go template for the whole message (see below) |
+| `--no-resolve-timestamps` | | Abort on a timestamp-only conflict instead of merging it |
 | `--no-pull` / `--no-push` | | Switch off either network half |
 | `--no-frontmatter` | | Pure auto-sync, no note rewriting (same as emptying both keys) |
 | `--dry-run` | | Change nothing |

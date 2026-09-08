@@ -19,10 +19,11 @@ import (
 
 func testConfig(root string) Config {
 	return Config{
-		RepoPath:      root,
-		CommitSubject: "notes: auto-sync",
-		Pull:          true,
-		Push:          true,
+		RepoPath:          root,
+		CommitSubject:     "notes: auto-sync",
+		Pull:              true,
+		Push:              true,
+		ResolveTimestamps: true,
 		Stamp: StampConfig{
 			Enabled: true,
 			Include: []string{"*.md"},

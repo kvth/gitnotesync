@@ -29,6 +29,9 @@ type Config struct {
 	Pull, Push bool
 	// RunHooks lets the repository's git hooks run on commit.
 	RunHooks bool
+	// ResolveTimestamps lets a rebase that stopped only on conflicting
+	// frontmatter timestamps be resolved and continued, rather than aborted.
+	ResolveTimestamps bool
 	// DryRun does everything except write files and run mutating git commands.
 	DryRun bool
 }
@@ -240,7 +243,7 @@ func (s *Syncer) pull(ctx context.Context, res *Result, upstream, remote string)
 	}
 
 	s.log.Info("rebasing onto upstream", "upstream", upstream, "behind", st.Behind)
-	if err := s.git.Rebase(ctx, upstream); err != nil {
+	if err := s.git.Rebase(ctx, upstream, s.resolveTimestamps); err != nil {
 		if errors.Is(err, gitx.ErrRebaseConflict) {
 			return fmt.Errorf("%w: %s and local history diverged; resolve by hand", ErrConflict, upstream)
 		}

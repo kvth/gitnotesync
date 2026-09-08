@@ -158,26 +158,93 @@ func (r *Runner) Fetch(ctx context.Context, remote string) error {
 // aborted, leaving the worktree exactly as it was.
 var ErrRebaseConflict = errors.New("rebase stopped on a conflict")
 
-// Rebase replays local commits onto upstream. On conflict it aborts and
-// returns ErrRebaseConflict, so the worktree is never left mid-rebase for a
-// user who has no idea the daemon touched anything.
-func (r *Runner) Rebase(ctx context.Context, upstream string) error {
-	_, err := r.Run(ctx, "rebase", "--autostash", upstream)
-	if err == nil {
-		return nil
-	}
+// ConflictResolver is offered the unmerged paths each time a rebase step
+// stops. It reports true only when it has fixed and staged every one of them;
+// anything else aborts the rebase.
+type ConflictResolver func(ctx context.Context, paths []string) (bool, error)
 
-	inProgress, perr := r.InProgress(ctx)
-	if perr != nil {
-		return err
+// maxRebaseSteps bounds how many times one rebase may stop and be resolved,
+// so a resolver that cannot make progress cannot spin forever.
+const maxRebaseSteps = 100
+
+// Rebase replays local commits onto upstream.
+//
+// A conflict is offered to resolve, if there is one, and the rebase continues
+// when it reports the tree clean. Otherwise -- and on anything unexpected --
+// the rebase is aborted and ErrRebaseConflict returned, so the worktree is
+// never left mid-rebase for a user who has no idea the daemon touched
+// anything.
+func (r *Runner) Rebase(ctx context.Context, upstream string, resolve ConflictResolver) error {
+	_, err := r.Run(ctx, "rebase", "--autostash", upstream)
+	for steps := 0; err != nil && steps < maxRebaseSteps; steps++ {
+		if op, perr := r.InProgress(ctx); perr != nil || op != "rebase" {
+			return err // it failed before the rebase even started
+		}
+		if resolve == nil {
+			return r.abortRebase(ctx, nil)
+		}
+
+		st, serr := r.Status(ctx)
+		if serr != nil {
+			return r.abortRebase(ctx, serr)
+		}
+
+		if len(st.Unmerged) == 0 {
+			// Resolving can make a commit's patch empty, which stops the
+			// rebase with nothing to fix. Dropping that commit is then the
+			// only way forward -- but only when git says so, since skipping
+			// on any other failure would silently lose local work.
+			if !isEmptyPatch(err) {
+				return r.abortRebase(ctx, nil)
+			}
+			if _, serr := r.Run(ctx, "rebase", "--skip"); serr != nil {
+				return r.abortRebase(ctx, serr)
+			}
+			err = nil
+			continue
+		}
+
+		paths := make([]string, 0, len(st.Unmerged))
+		for _, e := range st.Unmerged {
+			paths = append(paths, e.Path)
+		}
+		ok, rerr := resolve(ctx, paths)
+		if rerr != nil {
+			return r.abortRebase(ctx, rerr)
+		}
+		if !ok {
+			return r.abortRebase(ctx, nil)
+		}
+
+		// GIT_EDITOR wins over core.editor, so it has to be the environment
+		// that is neutered: a daemon has no terminal for an editor to open on.
+		noEdit := *r
+		noEdit.Env = append(append([]string(nil), r.Env...),
+			"GIT_EDITOR=true", "GIT_SEQUENCE_EDITOR=true")
+		_, err = noEdit.Run(ctx, "rebase", "--continue")
 	}
-	if inProgress != "rebase" {
-		return err
+	if err != nil {
+		return r.abortRebase(ctx, nil)
 	}
-	if _, aerr := r.Run(ctx, "rebase", "--abort"); aerr != nil {
-		return errors.Join(ErrRebaseConflict, aerr)
-	}
-	return ErrRebaseConflict
+	return nil
+}
+
+// abortRebase unwinds a stopped rebase and reports the conflict, keeping any
+// cause that explains why the resolution did not happen.
+func (r *Runner) abortRebase(ctx context.Context, cause error) error {
+	// Detached from cancellation on purpose: a SIGTERM arriving mid-rebase
+	// must not be what leaves the user's worktree half-rebased.
+	_, aerr := r.Run(context.WithoutCancel(ctx), "rebase", "--abort")
+	return errors.Join(ErrRebaseConflict, cause, aerr)
+}
+
+// isEmptyPatch reports the "nothing left to commit" outcome that a resolved
+// conflict can produce.
+func isEmptyPatch(err error) bool {
+	s := Stderr(err)
+	return strings.Contains(s, "patch is empty") ||
+		strings.Contains(s, "is now empty") ||
+		strings.Contains(s, "nothing to commit")
 }
 
 // Push publishes the current branch to its upstream.
