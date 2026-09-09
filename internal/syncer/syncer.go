@@ -185,7 +185,7 @@ func (s *Syncer) commit(ctx context.Context, st gitx.Status) ([]string, error) {
 	}
 
 	if err := s.git.HasAuthor(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrConfig, err)
 	}
 	if err := s.git.AddPaths(ctx, paths); err != nil {
 		return nil, err
@@ -230,7 +230,7 @@ func (s *Syncer) pull(ctx context.Context, res *Result, upstream, remote string)
 		return nil
 	}
 	if err := s.git.Fetch(ctx, remote); err != nil {
-		return fmt.Errorf("fetch %s: %w", remote, err)
+		return fmt.Errorf("%w: fetch %s: %w", ErrRemote, remote, err)
 	}
 	res.Fetched = true
 
@@ -273,7 +273,7 @@ func (s *Syncer) push(ctx context.Context, res *Result, upstream, remote, branch
 		return nil
 	}
 	if !gitx.IsRejected(err) {
-		return fmt.Errorf("push %s: %w", upstream, err)
+		return fmt.Errorf("%w: push %s: %w", ErrRemote, upstream, err)
 	}
 
 	// Someone pushed between our fetch and our push. Catch up once and retry;
@@ -283,7 +283,7 @@ func (s *Syncer) push(ctx context.Context, res *Result, upstream, remote, branch
 		return err
 	}
 	if err := s.git.Push(ctx, remote, branch); err != nil {
-		return fmt.Errorf("push %s: %w", upstream, err)
+		return fmt.Errorf("%w: push %s: %w", ErrRemote, upstream, err)
 	}
 	res.Pushed = true
 	return nil
@@ -342,11 +342,11 @@ func (s *Syncer) commitMessage(paths, labels []string) (string, error) {
 		Changes: labels,
 		Time:    time.Now(),
 	}); err != nil {
-		return "", fmt.Errorf("commit message template: %w", err)
+		return "", fmt.Errorf("%w: commit message template: %w", ErrConfig, err)
 	}
 	msg := b.String()
 	if strings.TrimSpace(msg) == "" {
-		return "", errors.New("commit message template produced an empty message")
+		return "", fmt.Errorf("%w: commit message template produced an empty message", ErrConfig)
 	}
 	return msg, nil
 }

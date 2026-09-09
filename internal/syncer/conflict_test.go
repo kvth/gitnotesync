@@ -124,3 +124,50 @@ func TestSyncResolveTimestampsCanBeDisabled(t *testing.T) {
 		t.Errorf("worktree was modified:\n%s", got)
 	}
 }
+
+// Two local commits, each conflicting only on the timestamp: the rebase has
+// to stop, be resolved, continue, and stop again.
+func TestSyncResolvesAcrossSeveralRebaseStops(t *testing.T) {
+	work, remote := initRepo(t)
+	write(t, work, "a.md", note("2026-09-01T00:00:00Z", "a base"))
+	write(t, work, "b.md", note("2026-09-01T00:00:00Z", "b base"))
+	git(t, work, "add", "-A")
+	git(t, work, "commit", "-m", "notes")
+	git(t, work, "push")
+
+	other := clone(t, remote)
+	write(t, other, "a.md", note("2026-09-08T09:00:00Z", "a base\n\nthere"))
+	write(t, other, "b.md", note("2026-09-08T09:00:00Z", "b base\n\nthere"))
+	git(t, other, "commit", "-am", "theirs")
+	git(t, other, "push")
+
+	// two separate local commits, each touching one note
+	write(t, work, "a.md", note("2026-09-08T08:00:00Z", "here\n\na base"))
+	git(t, work, "commit", "-am", "ours a")
+	write(t, work, "b.md", note("2026-09-08T10:00:00Z", "here\n\nb base"))
+	git(t, work, "commit", "-am", "ours b")
+
+	s := newSyncer(t, work)
+	_, err := s.Sync(context.Background())
+	if err != nil {
+		t.Fatalf("Sync() = %v", err)
+	}
+	if op, _ := s.git.InProgress(context.Background()); op != "" {
+		t.Errorf("left a %s in progress", op)
+	}
+	a, b := read(t, work, "a.md"), read(t, work, "b.md")
+	if strings.Contains(a, "<<<") || strings.Contains(b, "<<<") {
+		t.Fatal("markers left behind")
+	}
+	if !strings.Contains(a, "modified: 2026-09-08T09:00:00Z") {
+		t.Errorf("a.md: wanted the later stamp (09:00)")
+	}
+	if !strings.Contains(b, "modified: 2026-09-08T10:00:00Z") {
+		t.Errorf("b.md: wanted the later stamp (10:00)")
+	}
+	for _, f := range []string{a, b} {
+		if !strings.Contains(f, "here") || !strings.Contains(f, "there") {
+			t.Errorf("an edit was lost:\n%s", f)
+		}
+	}
+}

@@ -27,6 +27,11 @@ func main() {
 			return
 		}
 		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
+		if hint := cmd.Hint(err); hint != "" {
+			fmt.Fprintln(os.Stderr, "hint:", hint)
+		}
+		// The status says which kind of failure it was, so a timer or a
+		// wrapper script can react without parsing the line above.
+		os.Exit(cmd.ExitCode(err))
 	}
 }

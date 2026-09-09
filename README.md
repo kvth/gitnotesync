@@ -32,6 +32,25 @@ Try it read-only first:
 gitnotesync sync ~/notes --dry-run -v
 ```
 
+### Exit statuses
+
+`sync` classifies why it stopped, so a timer, a cron wrapper or a status bar
+can tell a failure that needs you from one that will be gone by the next run —
+without scraping stderr for wording that is free to change.
+
+| Status | Meaning | Clears by itself? |
+| --- | --- | --- |
+| 0 | Synced, or nothing to do | — |
+| 1 | Something else failed | Maybe |
+| 3 | Rebase/merge in progress, unmerged paths, or detached HEAD | No |
+| 4 | Local and upstream history diverged | No |
+| 5 | Setup cannot work: no committer identity, bad template, not a repository | No |
+| 6 | Fetch or push did not complete | Usually |
+
+Statuses 3, 4 and 5 mean nothing will sync until someone attends to the
+repository; a hint line on stderr says what to do. 2 is unused, being
+conventionally a usage error.
+
 ## The sync cycle
 
 1. **Refuse** if a rebase/merge/cherry-pick is half-finished, if any path is
@@ -190,6 +209,33 @@ the others nor buries their logs:
 
 ```bash
 journalctl --user -u "gitnotesync@$(systemd-escape --path ~/notes)" -f
+```
+
+### Knowing when it has stopped syncing
+
+A daemon whose every sync fails looks exactly like a healthy one from the
+outside: `active (running)`, forever. The unit is therefore `Type=notify`, and
+the watcher reports what it is doing through `sd_notify(3)`:
+
+```bash
+systemctl --user status "gitnotesync@$(systemd-escape --path ~/notes)"
+```
+
+```
+Active: active (running) since Mon 2026-09-07 09:12:03 CEST
+Status: "BLOCKED since Sep 9 21:03: sync stopped on a conflict: origin/main and local history diverged; resolve by hand"
+```
+
+`BLOCKED` means nothing will sync until you deal with the repository;
+`degraded` means the remote was unreachable and it will keep trying. A healthy
+unit shows the path it watches and when it last synced. The daemon stays
+running through all of it — the moment you resolve the conflict, the next cycle
+picks up where it left off and the status goes back to normal.
+
+The same transitions are in the journal, once each, with a `kind=` attribute:
+
+```bash
+journalctl --user -u "gitnotesync@$(systemd-escape --path ~/notes)" -p warning
 ```
 
 The daemon inherits its environment from the systemd user manager, so

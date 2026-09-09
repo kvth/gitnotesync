@@ -19,6 +19,12 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+# Type=notify lets the daemon report what it is doing through sd_notify(3), so
+# that `systemctl --user status` shows the last sync -- or, more to the point,
+# that syncing has been blocked on a conflict since Tuesday. Without it a unit
+# whose syncs all fail looks exactly like a healthy one: "active (running)".
+Type=notify
+
 # %I is the unescaped instance name, which has no leading slash of its own.
 ExecStart=%h/.local/bin/gitnotesync watch /%I
 Restart=always

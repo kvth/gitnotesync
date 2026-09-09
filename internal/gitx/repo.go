@@ -3,6 +3,7 @@ package gitx
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,12 +62,15 @@ func exists(path string) bool {
 
 // HasAuthor reports whether user.name and user.email are both resolvable.
 // git refuses to commit without them, with an error most users never see
-// because their daemon logs scroll past.
+// because their daemon logs scroll past. The cure is spelled out in the
+// message for the same reason: whoever eventually reads this is reading it
+// hours after the fact, out of context.
 func (r *Runner) HasAuthor(ctx context.Context) error {
 	for _, key := range []string{"user.name", "user.email"} {
 		out, err := r.RunRead(ctx, "config", "--get", key)
 		if err != nil || strings.TrimSpace(out) == "" {
-			return errors.New("git " + key + " is not set for this repository")
+			return fmt.Errorf("git %s is not set for this repository; run: git -C %s config %s ...",
+				key, r.Dir, key)
 		}
 	}
 	return nil

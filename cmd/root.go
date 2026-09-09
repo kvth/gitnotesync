@@ -151,13 +151,13 @@ func open(cmd *cobra.Command, args []string) (*syncer.Syncer, *gitx.Runner, stri
 		return nil, nil, "", err
 	}
 	if st, err := os.Stat(abs); err != nil || !st.IsDir() {
-		return nil, nil, "", fmt.Errorf("%s is not a directory", path)
+		return nil, nil, "", fmt.Errorf("%w: %s is not a directory", syncer.ErrConfig, path)
 	}
 
 	ctx := cmd.Context()
 	root, err := gitx.Toplevel(ctx, abs)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("%s is not inside a git repository", path)
+		return nil, nil, "", fmt.Errorf("%w: %s is not inside a git repository", syncer.ErrConfig, path)
 	}
 
 	runner := &gitx.Runner{Dir: root, Timeout: g.timeout}
@@ -167,7 +167,7 @@ func open(cmd *cobra.Command, args []string) (*syncer.Syncer, *gitx.Runner, stri
 	// would otherwise only show up on the first edit, hours later.
 	tmpl, err := syncer.ParseCommitTemplate(expandEscapes(g.commitMessage))
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("--commit-message: %w", err)
+		return nil, nil, "", fmt.Errorf("%w: --commit-message: %w", syncer.ErrConfig, err)
 	}
 
 	s := syncer.New(syncer.Config{
